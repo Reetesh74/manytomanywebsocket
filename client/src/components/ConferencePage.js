@@ -47,13 +47,11 @@ const ConferencePage = ({ roomId }) => {
   let audioParams;
   let videoParams = { params };
   let consumingTransports = [];
+  
   useEffect(() => {
     // Listen for connection success
-    socket.on("connection-success", ({ socketId}) => {
-      console.log(
-        "Connected to server with socket ID:",
-        socketId
-      );
+    socket.on("connection-success", ({ socketId }) => {
+      console.log("Connected to server with socket ID:", socketId);
       startVideoStream();
     });
 
@@ -64,7 +62,7 @@ const ConferencePage = ({ roomId }) => {
   }, []);
 
   const createDevice = async () => {
-    debugger;
+    // debugger;
     try {
       device = new mediaSoupClient.Device();
       await device.load({
@@ -218,7 +216,8 @@ const ConferencePage = ({ roomId }) => {
 
       const videoTrack = stream.getVideoTracks()[0];
       const audioTrack = stream.getAudioTracks()[0];
-
+      console.log("tttttttttttttttt", videoTrack);
+      console.log("pppppppppppppppp", audioTrack);
       if (!videoTrack) {
         console.error("No video track found.");
         return;
@@ -229,6 +228,23 @@ const ConferencePage = ({ roomId }) => {
         ...params, // Pass other parameters like encodings and codecOptions
       });
 
+      if (audioTrack) {
+        const audioProducer = await producerTransport.produce({
+          track: audioTrack,
+          codecOptions: {
+            opusStereo: true,
+            opusDtx: true,
+          },
+        });
+
+        audioProducer.on("trackended", () => {
+          console.log("Audio track ended");
+        });
+
+        audioProducer.on("transportclose", () => {
+          console.log("Audio transport closed");
+        });
+      }
       console.log("Producer created:", producer);
 
       producer.on("trackended", () => {
@@ -301,7 +317,7 @@ const ConferencePage = ({ roomId }) => {
     remoteProducerId,
     serverConsumerTransportId
   ) => {
-    debugger
+    // debugger;
     socket.emit(
       "consume",
       {
@@ -316,7 +332,7 @@ const ConferencePage = ({ roomId }) => {
         }
 
         console.log("Consumer params:", params);
-        
+
         try {
           // Create a consumer
           const consumer = await consumerTransport.consume({

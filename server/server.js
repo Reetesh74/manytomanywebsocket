@@ -29,6 +29,7 @@ app.post("/createMeeting", (req, res) => {
   peers[roomId] = [];
   res.json({ roomId });
 });
+
 let producer;
 let worker;
 let router;
@@ -487,7 +488,7 @@ connections.on("connection", async (socket) => {
           const webRtcTransport_options = {
             listenIps: [
               {
-                ip: "192.168.31.182", // replace with relevant IP address
+                ip: "192.168.210.101", // replace with relevant IP address
                 // announcedIp: "10.0.0.115",
               },
             ],
