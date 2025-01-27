@@ -1,8 +1,7 @@
-import { Transport } from "mediasoup-client/lib/types";
 import React, { useEffect, useRef, useState } from "react";
 import io from "socket.io-client";
 const mediaSoupClient = require("mediasoup-client");
-const SERVER_URL = "http://localhost:3000"; // Make sure this matches the server's URL
+const SERVER_URL = "http://localhost:3000";
 const socket = io(SERVER_URL);
 let device;
 
@@ -12,15 +11,12 @@ const ConferencePage = ({ roomId }) => {
   const [isStreaming, setIsStreaming] = useState(false);
   const videoContainerRef = useRef(null);
   const videoRef = useRef(null);
-  const remoteVideoRef = useRef(null);
-  let isProducer = false;
   let producerTransport;
   let consumerTransports = [];
+  let consumingTransports = [];
   let producer;
-  let consumer;
   let rtpCapabilities;
   let params = {
-    // mediasoup params
     encodings: [
       {
         rid: "r0",
@@ -38,20 +34,14 @@ const ConferencePage = ({ roomId }) => {
         scalabilityMode: "S1T3",
       },
     ],
-    // https://mediasoup.org/documentation/v3/mediasoup-client/api/#ProducerCodecOptions
     codecOptions: {
       videoGoogleStartBitrate: 1000,
     },
   };
 
-  let audioParams;
-  let videoParams = { params };
-  let consumingTransports = [];
-  
   useEffect(() => {
     // Listen for connection success
     socket.on("connection-success", ({ socketId }) => {
-      console.log("Connected to server with socket ID:", socketId);
       startVideoStream();
     });
 
@@ -62,15 +52,12 @@ const ConferencePage = ({ roomId }) => {
   }, []);
 
   const createDevice = async () => {
-    // debugger;
     try {
       device = new mediaSoupClient.Device();
       await device.load({
         routerRtpCapabilities: rtpCapabilities,
       });
-      // setRtpCapabilities(rtpCapabilities);
       createSendTransport();
-      console.log("rtp rtpCapabilities", rtpCapabilities);
     } catch (error) {
       console.log(error);
     }
@@ -84,7 +71,6 @@ const ConferencePage = ({ roomId }) => {
         audio: true,
       });
 
-      // Assign the stream to the video element
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         videoRef.current.play();
@@ -99,40 +85,9 @@ const ConferencePage = ({ roomId }) => {
   };
 
   const joinRoom = () => {
-    // debugger
     socket.emit("joinRoom", { roomName }, (data) => {
-      console.log(`router RTP rtpCapabilities...${data.rtpCapabilities}`);
       rtpCapabilities = data.rtpCapabilities;
       createDevice();
-    });
-  };
-  // const goConsume = () => {
-  //   debugger;
-  //   goConnect(false);
-  // };
-
-  // const goConnect = (producerOrConsumer) => {
-  //   isProducer = producerOrConsumer;
-  //   device === undefined ? getRtpCapabilities() : goCreateTransport();
-  // };
-
-  // const goCreateTransport = () => {
-  //   // debugger;
-  //   // isProducer ? createSendTransport() : createRecvTransport();
-  // };
-
-  const getRtpCapabilities = () => {
-    socket.emit("createRoom", (data) => {
-      //   const { rtpCapabilities } = data;
-      console.log("Received RTP Capabilities from server:", data);
-
-      if (!data.rtpCapabilities || !data.rtpCapabilities.codecs) {
-        console.error("Invalid RTP Capabilities received from server.");
-        return;
-      }
-
-      //   rtpCapabilities = data.rtpCapabilities;
-      createDevice(data.rtpCapabilities);
     });
   };
 
@@ -151,14 +106,12 @@ const ConferencePage = ({ roomId }) => {
         console.log(params.error);
         return;
       }
-      console.log("params", params);
       producerTransport = device.createSendTransport(params);
       producerTransport.on(
         "connect",
         async ({ dtlsParameters }, callback, errorback) => {
           try {
             await socket.emit("transport-connect", {
-              // TransportId:producerTransport.id,
               dtlsParameters: dtlsParameters,
             });
             callback();
@@ -170,12 +123,10 @@ const ConferencePage = ({ roomId }) => {
       producerTransport.on(
         "produce",
         async (parameters, callback, errorback) => {
-          console.log(parameters);
           try {
             await socket.emit(
               "transport-produce",
               {
-                // TransportId:producerTransport.id,
                 kind: parameters.kind,
                 rtpParameters: parameters.rtpParameters,
                 appData: parameters.appData,
@@ -193,21 +144,9 @@ const ConferencePage = ({ roomId }) => {
       connectSendTransport();
     });
   };
-  // const connectSendTransport =async ()=>{
-  //   console.log("params",params)
-  //   producer = await producerTransport.produce(params)
-  //   console.log(producer)
-  //   producer.on('trackended',()=>{
-  //     console.log('track ended')
-  //   })
-  //   producer.on('transportclose',()=>{
-  //     console.log('transport ended')
-  //   })
-  // }
 
   const connectSendTransport = async () => {
     try {
-      console.log("params", params);
       const stream = videoRef.current.srcObject;
       if (!stream) {
         console.error("No media stream found.");
@@ -216,16 +155,15 @@ const ConferencePage = ({ roomId }) => {
 
       const videoTrack = stream.getVideoTracks()[0];
       const audioTrack = stream.getAudioTracks()[0];
-      console.log("tttttttttttttttt", videoTrack);
-      console.log("pppppppppppppppp", audioTrack);
+
       if (!videoTrack) {
         console.error("No video track found.");
         return;
       }
 
       producer = await producerTransport.produce({
-        track: videoTrack, // Attach video track
-        ...params, // Pass other parameters like encodings and codecOptions
+        track: videoTrack,
+        ...params,
       });
 
       if (audioTrack) {
@@ -245,7 +183,6 @@ const ConferencePage = ({ roomId }) => {
           console.log("Audio transport closed");
         });
       }
-      console.log("Producer created:", producer);
 
       producer.on("trackended", () => {
         console.log("Track ended");
@@ -259,8 +196,6 @@ const ConferencePage = ({ roomId }) => {
     }
   };
   const signalNewConsumerTransport = async (remoteProducerId) => {
-    //check if we are already consuming the remoteProducerId
-    // debugger
     if (consumingTransports.includes(remoteProducerId)) return;
     consumingTransports.push(remoteProducerId);
 
@@ -268,21 +203,15 @@ const ConferencePage = ({ roomId }) => {
       "createWebRtcTransport",
       { consumer: true },
       ({ params }) => {
-        // The server sends back params needed
-        // to create Send Transport on the client side
         if (params.error) {
           console.log(params.error);
           return;
         }
-        console.log(`PARAMS... ${params}`);
 
         let consumerTransport;
         try {
           consumerTransport = device.createRecvTransport(params);
         } catch (error) {
-          // exceptions:
-          // {InvalidStateError} if not loaded
-          // {TypeError} if wrong arguments.
           console.log(error);
           return;
         }
@@ -291,17 +220,13 @@ const ConferencePage = ({ roomId }) => {
           "connect",
           async ({ dtlsParameters }, callback, errback) => {
             try {
-              // Signal local DTLS parameters to the server side transport
-              // see server's socket.on('transport-recv-connect', ...)
               await socket.emit("transport-recv-connect", {
                 dtlsParameters,
                 serverConsumerTransportId: params.id,
               });
 
-              // Tell the transport that parameters were transmitted.
               callback();
             } catch (error) {
-              // Tell the transport that something was wrong
               errback(error);
             }
           }
@@ -317,7 +242,6 @@ const ConferencePage = ({ roomId }) => {
     remoteProducerId,
     serverConsumerTransportId
   ) => {
-    // debugger;
     socket.emit(
       "consume",
       {
@@ -330,8 +254,6 @@ const ConferencePage = ({ roomId }) => {
           console.error("Error consuming:", params.error);
           return;
         }
-
-        console.log("Consumer params:", params);
 
         try {
           // Create a consumer
@@ -356,12 +278,10 @@ const ConferencePage = ({ roomId }) => {
           const newElem = document.createElement("div");
           newElem.setAttribute("id", `td-${remoteProducerId}`);
 
-          if (params.kind == "audio") {
-            //append to the audio container
+          if (params.kind === "audio") {
             newElem.innerHTML =
               '<audio id="' + remoteProducerId + '" autoPlay></audio>';
           } else {
-            //append to the video container
             newElem.setAttribute("className", "remoteVideo");
             newElem.innerHTML =
               '<video id="' +
@@ -370,17 +290,11 @@ const ConferencePage = ({ roomId }) => {
           }
 
           videoContainerRef.current.appendChild(newElem);
-          // Get the track from the consumer
           const { track } = consumer;
 
-          // if (remoteVideoRef.current) {
-          //   // Set the track to the remote video element
-          //   remoteVideoRef.current.srcObject = new MediaStream([track]);
-          // }
           document.getElementById(remoteProducerId).srcObject = new MediaStream(
             [track]
           );
-          // Notify the server to resume the consumer
           socket.emit("consumer-resume", {
             serverConsumerId: params.serverConsumerId,
           });
@@ -403,7 +317,6 @@ const ConferencePage = ({ roomId }) => {
         (transportData) => transportData.producerId !== remoteProducerId
       );
 
-      // Remove the video element from the container
       const videoElem = document.getElementById(`td-${remoteProducerId}`);
       if (videoElem && videoContainerRef.current) {
         videoContainerRef.current.removeChild(videoElem);
@@ -414,44 +327,12 @@ const ConferencePage = ({ roomId }) => {
   return (
     <div>
       <h1>Conference Page</h1>
-      {/* Button to start the video stream */}
-      {/* {!isStreaming && (
-        <button onClick={startVideoStream}>Start Video Stream</button>
-      )}
-      <button onClick={getRtpCapabilities}>getRtpCapabilities</button>
-      <button onClick={createDevice}>createDevice</button>
-      <button onClick={createSendTransport}>createSendTransport</button>
-      <button onClick={connectSendTransport}>connectSendTransport</button>
-      <button onClick={createRecvTransport}>createRecvTransport</button>
-      <button onClick={connectRecvTransport}>connectRecvTransport</button> */}
-      {/* Video element to display the local video stream */}
-      {/* <button onClick={startVideoStream}>publicer</button>
-      <button onClick={goConsume}>consume</button> */}
-      {/* <div>
-        <video
-          ref={videoRef}
-          style={{ width: "640px", height: "360px", border: "1px solid black" }}
-          autoPlay
-          playsInline
-          muted // Muted to prevent echo from local stream
-        />
-      </div> */}
-      {/* Remote Video */}
-      {/* <div>
-        <h2>Remote Stream</h2>
-        <video
-          ref={remoteVideoRef}
-          style={{ width: "640px", height: "360px", border: "1px solid black" }}
-          autoPlay
-          playsInline
-        />
-      </div> */}
+
       <div id="video">
         <table className="mainTable">
           <tbody>
             <tr>
               <td className="localColumn">
-                {/* <video id="localVideo" autoPlay className="video" muted></video> */}
                 <video
                   ref={videoRef}
                   style={{
@@ -461,7 +342,7 @@ const ConferencePage = ({ roomId }) => {
                   }}
                   autoPlay
                   playsInline
-                  muted // Muted to prevent echo from local stream
+                  muted
                 />
               </td>
               <td className="remoteColumn">
